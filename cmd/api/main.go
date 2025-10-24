@@ -4,35 +4,45 @@ import (
 	"flag"
 	"log"
 	"log/slog"
-	"os"
+	"time"
 
 	"github.com/MarcosSMZ94/poews/internal/server"
 )
 
+const (
+	defaultAddr     = ":8080"
+	defaultFilePath = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Path of Exile\\logs\\LatestClient.txt"
+	dateTimeFormat  = "02/01/2006 15:04:05"
+	shutdownTimeout = 5 * time.Second
+)
+
 func main() {
-	addr := flag.String("addr", ":8080", "HTTP network address")
-	filepath := flag.String(
-		"path",
-		"C:\\Program Files (x86)\\Steam\\steamapps\\common\\Path of Exile\\logs\\LatestClient.txt",
-		"PoE default path",
-	)
+	addr := flag.String("addr", defaultAddr, "HTTP network address")
+	filepath := flag.String("path", defaultFilePath, "PoE client log path")
 	flag.Parse()
 
-	opts := &slog.HandlerOptions{
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.TimeKey && len(groups) == 0 {
-				t := a.Value.Time()
-				a.Value = slog.StringValue(t.Format("02/01/2006 15:04:05"))
-			}
-			return a
-		},
+	if err := validateFilePath(*filepath); err != nil {
+		log.Fatalf("Invalid file path: %v", err)
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, opts))
+	logger := setupLogger()
+	logger.Info("Starting PoE Trade Helper", "addr", *addr, "watching", *filepath)
 
-	server := server.NewServer(*addr, logger)
-	server.WatchFile(*filepath)
+	srv := server.NewServer(*addr, logger)
+	srv.WatchFile(*filepath)
 
-	err := server.Start()
-	log.Fatal(err)
+	shutdown := make(chan struct{})
+	setupSignalHandler(shutdown, logger)
+
+	startServer(srv, logger)
+
+	runSystemTray(srv, logger, *addr, shutdown)
+}
+
+func startServer(srv *server.Server, logger *slog.Logger) {
+	go func() {
+		if err := srv.Start(); err != nil {
+			logger.Error("Server error", "error", err)
+		}
+	}()
 }

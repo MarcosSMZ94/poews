@@ -1,6 +1,5 @@
 ## TODO
 flags de configuracao
-filewatcher
+env config
 interface web
-env
 ...

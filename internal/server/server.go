@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -12,27 +13,28 @@ const (
 	idleTimeout  = 60 * time.Second
 )
 
-type server struct {
+type Server struct {
 	*application
 
-	logger *slog.Logger
-	port   string
+	logger     *slog.Logger
+	port       string
+	httpServer *http.Server
 }
 
-func NewServer(port string, logger *slog.Logger) *server {
+func NewServer(port string, logger *slog.Logger) *Server {
 	app := newApp(logger)
 
-	return &server{
+	return &Server{
 		application: app,
 		logger:      logger,
 		port:        port,
 	}
 }
 
-func (s *server) Start() error {
+func (s *Server) Start() error {
 	go s.application.run()
 
-	httpServer := &http.Server{
+	s.httpServer = &http.Server{
 		Addr:         s.port,
 		Handler:      s.registerRoutes(),
 		ReadTimeout:  readTimeout,
@@ -41,5 +43,19 @@ func (s *server) Start() error {
 	}
 
 	s.logger.Info("Server starting", "addr", s.port)
-	return httpServer.ListenAndServe()
+	return s.httpServer.ListenAndServe()
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
+	s.logger.Info("Shutting down server...")
+
+	s.application.stopFileWatcher()
+
+	s.application.closeAllClients()
+
+	if s.httpServer != nil {
+		return s.httpServer.Shutdown(ctx)
+	}
+
+	return nil
 }

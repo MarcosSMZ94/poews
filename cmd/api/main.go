@@ -18,7 +18,17 @@ func main() {
 	)
 	flag.Parse()
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	opts := &slog.HandlerOptions{
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.TimeKey && len(groups) == 0 {
+				t := a.Value.Time()
+				a.Value = slog.StringValue(t.Format("02/01/2006 15:04:05"))
+			}
+			return a
+		},
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, opts))
 
 	server := server.NewServer(*addr, logger)
 	server.WatchFile(*filepath)

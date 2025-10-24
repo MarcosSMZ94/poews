@@ -1,14 +1,18 @@
 package server
 
 import (
-	"bufio"
 	"context"
-	"fmt"
 	"log/slog"
-	"os"
 	"sync"
+	"time"
 
+	"github.com/MarcosSMZ94/poews/internal/utils"
 	"github.com/coder/websocket"
+)
+
+const (
+	pollInterval        = 500 * time.Millisecond
+	broadcastBufferSize = 256
 )
 
 type socketClient struct {
@@ -31,7 +35,7 @@ func newApp(logger *slog.Logger) *application {
 			clients:    make(map[*websocket.Conn]bool),
 			register:   make(chan *websocket.Conn),
 			unregister: make(chan *websocket.Conn),
-			broadcast:  make(chan []byte),
+			broadcast:  make(chan []byte, broadcastBufferSize),
 			mu:         sync.Mutex{},
 		},
 		logger: logger,
@@ -77,7 +81,7 @@ func (app *application) handleUnregister(conn *websocket.Conn) {
 func (app *application) handleBroadcast(message []byte) {
 	app.mu.Lock()
 	for conn := range app.clients {
-		err := conn.Write(context.Background(), websocket.MessageText, []byte(message))
+		err := conn.Write(context.Background(), websocket.MessageText, message)
 		if err != nil {
 			app.logger.Error("Error sending to client", "error", err)
 			if err := conn.Close(websocket.StatusInternalError, ""); err != nil {
@@ -90,17 +94,31 @@ func (app *application) handleBroadcast(message []byte) {
 	app.logger.Info("Broadcasted message", "total_clients", len(app.clients), "message", message)
 }
 
-func (app *application) ReadInput() {
-	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Println("\nType messages to send to clients:")
-	for scanner.Scan() {
-		message := scanner.Text()
-		if message != "" {
-			app.Broadcast([]byte(message))
-		}
+func (app *application) WatchFile(filepath string) {
+	lastOffset, err := utils.GetCurrentFileSize(filepath)
+	if err != nil {
+		app.logger.Error("Failed to get initial file size", "error", err)
+		lastOffset = 0
 	}
-}
 
-func (app *application) Broadcast(message []byte) {
-	app.broadcast <- message
+	ticker := time.NewTicker(pollInterval)
+
+	go func() {
+		defer ticker.Stop()
+
+		for range ticker.C {
+			messages, newOffset, err := utils.GetNewTradeMessages(filepath, lastOffset)
+			if err != nil {
+				app.logger.Error("Failed to read messages", "error", err)
+				continue
+			}
+
+			if len(messages) > 0 {
+				for _, message := range messages {
+					app.broadcast <- []byte(message)
+				}
+				lastOffset = newOffset
+			}
+		}
+	}()
 }

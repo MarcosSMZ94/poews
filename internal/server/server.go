@@ -47,7 +47,7 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
-	s.logger.Info("Shutting down server...")
+	s.logger.InfoContext(ctx, "Shutting down server...")
 
 	s.application.stopFileWatcher()
 

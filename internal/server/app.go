@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MarcosSMZ94/poews/internal/utils"
+	parsers "github.com/MarcosSMZ94/poews/internal/utils"
 	"github.com/coder/websocket"
 )
 
@@ -135,7 +135,7 @@ func (app *application) getFileOffset() int64 {
 func (app *application) WatchFile(filepath string) {
 	app.setWatchedFile(filepath)
 
-	if offset, err := utils.GetCurrentFileSize(filepath); err == nil {
+	if offset, err := parsers.GetCurrentFileSize(filepath); err == nil {
 		app.setFileOffset(offset)
 		app.logger.Info("File watcher initialized", "path", filepath)
 	} else {
@@ -173,7 +173,7 @@ func (app *application) processNewMessages() {
 	filepath := app.getWatchedFile()
 	currentOffset := app.getFileOffset()
 
-	messages, newOffset, err := utils.GetNewTradeMessages(filepath, currentOffset)
+	messages, newOffset, err := parsers.GetNewTradeMessages(filepath, currentOffset)
 	if err != nil {
 		app.logger.Error("Failed to read messages", "error", err, "offset", currentOffset)
 		return
